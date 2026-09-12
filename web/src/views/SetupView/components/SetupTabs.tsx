@@ -1,6 +1,6 @@
 import React from "react";
 import { Tabs, Tab, H5, Button, Icon, Intent, Tag, Callout } from "@blueprintjs/core";
-import { Globe, AppWindowMac, Monitor, Terminal, Smartphone } from "lucide-react";
+import { Globe, AppWindowMac, Monitor, Terminal, Smartphone, Router } from "lucide-react";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 import type {  RegionConfigItem  } from "../../../config/regions";
@@ -17,6 +17,34 @@ export interface SetupTabsProps {
   currentIps: { ip: string; area: string | null }[];
 }
 
+/** RouterOS commands that do not vary between deployments. */
+const MIKROTIK_CERT_CMD = `/ip dns set servers=1.1.1.1 use-doh-server="" verify-doh-cert=no
+/tool fetch url=https://curl.se/ca/cacert.pem
+/certificate import file-name=cacert.pem passphrase=""
+/certificate print`;
+
+const MIKROTIK_REDIRECT_CMD = `/ip firewall nat add chain=dstnat protocol=udp dst-port=53 action=redirect to-ports=53 in-interface-list=LAN
+/ip firewall nat add chain=dstnat protocol=tcp dst-port=53 action=redirect to-ports=53 in-interface-list=LAN`;
+
+/** A copyable terminal block with a hover copy button. */
+const CommandBlock: React.FC<{ text: string; copyToClipboard: (t: string) => void }> = ({
+  text,
+  copyToClipboard,
+}) => (
+  <div className="relative group">
+    <pre className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-xs font-mono border border-gray-200 dark:border-gray-700 whitespace-pre">
+      <code>{text}</code>
+    </pre>
+    <Button
+      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+      icon="duplicate"
+      minimal
+      small
+      onClick={() => copyToClipboard(text)}
+    />
+  </div>
+);
+
 export const SetupTabs: React.FC<SetupTabsProps> = ({
   isMobile,
   copyToClipboard,
@@ -28,6 +56,14 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
   currentIps,
 }) => {
   const { t } = useTranslation();
+
+  // MikroTik: the DoH endpoint is this origin plus the access key, and RouterOS
+  // needs a static A record for the hostname or it cannot resolve the resolver.
+  const dohHost = window.location.hostname;
+  const dohUrl = `${window.location.origin}/${profileKey}`;
+  const pinnedIp = currentIps.find((entry) => entry.ip && !entry.ip.includes(":"))?.ip ?? "";
+  const mikrotikStaticCmd = `/ip dns static add name=${dohHost} address=${pinnedIp || "<edge-ip-from-above>"} type=A`;
+  const mikrotikDohCmd = `/ip dns set use-doh-server="${dohUrl}" verify-doh-cert=yes\n/ip dns cache flush`;
 
   return (
     <Tabs
@@ -227,6 +263,63 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
 
             <Callout intent={Intent.PRIMARY} icon="info-sign" className="text-xs">
               {t("setup.androidWarning")}
+            </Callout>
+          </div>
+        }
+      />
+
+      <Tab
+        id="mikrotik"
+        title={
+          <span>
+            <Router size={16} className="inline mr-2" />
+            {t("setup.mikrotik", "MikroTik")}
+          </span>
+        }
+        panel={
+          <div className="space-y-4 md:ml-4 mt-4 md:mt-0">
+            <H5 className="font-bold">{t("setup.mikrotikTitle", "MikroTik RouterOS (network-wide)")}</H5>
+            <p className="text-sm">
+              {t("setup.mikrotikDesc", "Applies to every device on the LAN. Requires RouterOS 6.47 or later. Run these in a RouterOS terminal, in order.")}
+            </p>
+
+            <Callout intent={Intent.PRIMARY} icon="info-sign" className="text-xs">
+              {t("setup.mikrotikOrderWarning", "Order matters: the router needs working DNS to download the CA bundle, so plain DNS is set first and DoH is switched on last.")}
+            </Callout>
+
+            <div className="mt-4">
+              <p className="text-sm font-bold mb-2">{t("setup.mikrotikStep1", "1. Trust public CAs (RouterOS ships with no CA store)")}</p>
+              <CommandBlock text={MIKROTIK_CERT_CMD} copyToClipboard={copyToClipboard} />
+              <p className="text-xs opacity-60 mt-1">
+                {t("setup.mikrotikStep1Hint", "Without this, certificate verification fails and DoH silently stops resolving.")}
+              </p>
+            </div>
+
+            <div className="mt-4">
+              <p className="text-sm font-bold mb-2">{t("setup.mikrotikStep2", "2. Pin this server's address (avoids a chicken-and-egg lookup)")}</p>
+              <CommandBlock text={mikrotikStaticCmd} copyToClipboard={copyToClipboard} />
+              {!pinnedIp && (
+                <p className="text-xs opacity-60 mt-1">
+                  {t("setup.mikrotikStep2Hint", "Replace the address with one of the IPs shown in the region section above.")}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4">
+              <p className="text-sm font-bold mb-2">{t("setup.mikrotikStep3", "3. Enable DNS-over-HTTPS")}</p>
+              <CommandBlock text={mikrotikDohCmd} copyToClipboard={copyToClipboard} />
+            </div>
+
+            <div className="mt-4">
+              <p className="text-sm font-bold mb-2">{t("setup.mikrotikStep4", "4. Force LAN clients through the router (optional)")}</p>
+              <CommandBlock text={MIKROTIK_REDIRECT_CMD} copyToClipboard={copyToClipboard} />
+              <p className="text-xs opacity-60 mt-1">
+                {t("setup.mikrotikStep4Hint", "Stops devices with hardcoded resolvers from bypassing filtering.")}
+              </p>
+            </div>
+
+            <Callout intent={Intent.WARNING} icon="warning-sign" className="text-xs">
+              {t("setup.mikrotikAttributionWarning", "All LAN devices share this access point, so logs show the router rather than individual clients. Set up devices individually if you need per-device visibility.")}
             </Callout>
           </div>
         }

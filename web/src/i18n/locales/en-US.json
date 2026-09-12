@@ -247,7 +247,19 @@
     "linuxStep2": "Change your system DNS to 127.0.0.1.",
     "accessPointsCardTitle": "Access Points",
     "currentAccessPoint": "Current Access Point",
-    "selectAccessPointToConfigure": "Select Access Point to Configure"
+    "selectAccessPointToConfigure": "Select Access Point to Configure",
+    "mikrotik": "MikroTik",
+    "mikrotikTitle": "MikroTik RouterOS (network-wide)",
+    "mikrotikDesc": "Applies to every device on the LAN. Requires RouterOS 6.47 or later. Run these in a RouterOS terminal, in order.",
+    "mikrotikOrderWarning": "Order matters: the router needs working DNS to download the CA bundle, so plain DNS is set first and DoH is switched on last.",
+    "mikrotikStep1": "1. Trust public CAs (RouterOS ships with no CA store)",
+    "mikrotikStep1Hint": "Without this, certificate verification fails and DoH silently stops resolving.",
+    "mikrotikStep2": "2. Pin this server's address (avoids a chicken-and-egg lookup)",
+    "mikrotikStep2Hint": "Replace the address with one of the IPs shown in the region section above.",
+    "mikrotikStep3": "3. Enable DNS-over-HTTPS",
+    "mikrotikStep4": "4. Force LAN clients through the router (optional)",
+    "mikrotikStep4Hint": "Stops devices with hardcoded resolvers from bypassing filtering.",
+    "mikrotikAttributionWarning": "All LAN devices share this access point, so logs show the router rather than individual clients. Set up devices individually if you need per-device visibility."
   },
   "rules": {
     "title": "Custom Rules",
@@ -518,7 +530,8 @@
     "retentionDisabledDesc": "Logging is disabled. The system will not record any DNS query logs and will immediately clear historical logs.",
     "logBlockedOnly": "Log blocked queries only",
     "logBlockedOnlyDesc": "Allowed queries are discarded before they are written. Keeps the record of what was blocked while removing the bulk of database writes.",
-    "logBlockedOnlyHint": "Analytics covering allowed traffic will be empty while this is on."
+    "logBlockedOnlyHint": "Analytics covering allowed traffic will be empty while this is on.",
+    "presetCloudflare": "Cloudflare (No filtering)"
   },
   "account": {
     "title": "Account Settings",

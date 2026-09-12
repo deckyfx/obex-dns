@@ -122,6 +122,10 @@ SYNC_PROFILE_INTERVAL_SEC=86400
 PRESET_UPSTREAMS = """
 [
   {
+    "label": "settings.presetCloudflare",
+    "url": "https://cloudflare-dns.com/dns-query"
+  },
+  {
     "label": "settings.presetCloudflareSecurity",
     "url": "https://security.cloudflare-dns.com/dns-query"
   },
@@ -152,6 +156,10 @@ PRESET_UPSTREAMS = """
   {
     "label": "settings.presetAdGuardFamily",
     "url": "https://family.adguard-dns.com/dns-query"
+  },
+  {
+    "label": "Cloudflare (1.1.1.1)",
+    "url": "tcp://1.1.1.1:53"
   },
   {
     "label": "Cloudflare Security (1.1.1.2)",
