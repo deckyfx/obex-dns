@@ -79,31 +79,22 @@ export const pipelineConfig = {
 
       // 并发从 D1 读取配置、规则及布隆过滤器，消除串行网络往返等待
       //
-      // The bloom is only re-read when this isolate has no fresh copy. It is by
-      // far the largest read here - a 1M-domain filter is ~2.4MB, spread over
-      // several 512KB rows - and it changes only on a list sync, not on the
-      // settings edits this config entry tracks. Skipping it when
-      // bloomMemoryMap is still inside BLOOM_MEM_TTL keeps the shortened L2
-      // config TTL from multiplying whole-bloom reads.
-      const freshInMemBloom =
-        inMem && Date.now() - inMem.ts < bloomMemTtl ? inMem.bloom : undefined;
-
-      // Carry it into `bloom` now: the `if (buffer)` branch below is what
-      // normally assigns it, and that branch is skipped when the read is.
-      if (freshInMemBloom) {
-        track('load_bloom_l1_mem');
-        bloom = freshInMemBloom;
-      }
-
+      // The bloom is read unconditionally, even when this isolate already holds
+      // a fresh copy in bloomMemoryMap. Skipping it looks like an easy saving -
+      // it is the largest read here, ~2.4MB over several rows - but this pass
+      // also republishes both L2 entries, and the L2 read branch above returns
+      // without a bloom, and without falling through to D1, whenever the config
+      // entry exists and bloom-bin does not. Publishing the config entry while
+      // leaving bloom-bin absent therefore makes every other isolate in the
+      // colo answer with no list filtering at all. Reading and republishing the
+      // two together is what keeps that state self-healing.
       const [profile, rules, buffer] = await Promise.all([
         profileModel.getById(profileId),
         ruleModel.getRules(profileId),
-        freshInMemBloom
-          ? Promise.resolve(null)
-          : bloomModel.getProfileBloom(profileId).catch((e) => {
-              console.error("[Config] D1 Bloom loading failed:", e);
-              return null;
-            }),
+        bloomModel.getProfileBloom(profileId).catch((e) => {
+          console.error("[Config] D1 Bloom loading failed:", e);
+          return null;
+        }),
       ]);
 
       if (!profile) {
@@ -132,12 +123,7 @@ export const pipelineConfig = {
       }
 
       const config = { settings, rules };
-      // Only stamp a filter that was actually just read. Re-stamping the one
-      // taken from memory would refresh BLOOM_MEM_TTL on every pass, so the
-      // ceiling would never expire and a warm isolate would serve its first
-      // bloom for its whole lifetime - never seeing a cron sync or a rebuild
-      // performed in another isolate.
-      if (bloom && !freshInMemBloom) bloomMemoryMap.set(profileId, { bloom, ts: Date.now() });
+      if (bloom) bloomMemoryMap.set(profileId, { bloom, ts: Date.now() });
       
       configCache.set(profileId, { ...config, timestamp: Date.now() });
       // 写入 L2 Cache API 配置缓存 (配置变更时有主动淘汰)
