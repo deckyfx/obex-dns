@@ -1,4 +1,4 @@
-import { Env, User } from '../types';
+import { Env, User, ExecutionContext } from '../types';
 import { getOrCreateJwtSecret, readCsrfCookie } from './auth';
 import { importJwtSecret, verifyJWT } from './jwt';
 import { SessionModel } from '../models/session';
@@ -41,7 +41,18 @@ export function invalidateAuthUserCache(sessionId: string): void {
   authUserMemoryCache.delete(sessionId);
 }
 
-export async function getCurrentUser(request: Request, env: Env): Promise<User | null> {
+/**
+ * Minimum seconds between session last-active writes. This is a liveness
+ * timestamp used for the idle-lock check, so second-level precision buys
+ * nothing while costing a D1 write on every request.
+ */
+const SESSION_ACTIVITY_THROTTLE_SEC = 60;
+
+export async function getCurrentUser(
+  request: Request,
+  env: Env,
+  ctx?: ExecutionContext
+): Promise<User | null> {
   const authHeader = request.headers.get("Authorization") || "";
   let accessToken = "";
   if (authHeader.startsWith("Bearer ")) {
@@ -94,9 +105,23 @@ export async function getCurrentUser(request: Request, env: Env): Promise<User |
         return pausedUser;
       }
 
-      // Throttle DB updates: only update if at least 10 seconds have elapsed since last active time
-      if (now - lastActive > 10) {
-        await sessionModel.updateLastActive(session.id, now);
+      // Refresh the session's last-active timestamp, throttled.
+      //
+      // Deliberately NOT awaited inline. This write used to block the auth
+      // path, which made it an availability risk: when D1 rejects the write -
+      // the daily rows_written quota being the realistic cause - it throws,
+      // the outer catch swallows it, getCurrentUser returns null and the user
+      // is answered 401. A liveness timestamp must never fail a request.
+      //
+      // Handed to waitUntil where available so it still completes after the
+      // response is sent, rather than being cancelled with the request.
+      if (now - lastActive > SESSION_ACTIVITY_THROTTLE_SEC) {
+        const write = sessionModel
+          .updateLastActive(session.id, now)
+          .catch((e) => console.error("[Auth] session last-active write failed:", e));
+        if (ctx) {
+          ctx.waitUntil(write);
+        }
       }
 
       const validatedUser: User = { id: payload.userId, username: dbUser?.username || "", role: payload.role as any, sessionId: payload.sessionId };
