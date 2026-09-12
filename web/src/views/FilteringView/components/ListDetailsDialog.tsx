@@ -73,7 +73,10 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
     if (!result?.matchedEntry) return;
     setAllowing(true);
     try {
-      await onAllowDomain(result.matchedEntry);
+      // Scope the exception to what was asked about. matchedEntry may be a
+      // parent, and an ALLOW rule matches the pattern plus all its subdomains,
+      // so allowing it would un-block every sibling too.
+      await onAllowDomain(result.domain);
       setAllowed(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -128,8 +131,14 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
               fill
               placeholder="example.com"
               value={query}
+              disabled={checking}
               leftIcon="globe-network"
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                // Drop the previous verdict so "Allow anyway" can never act on
+                // a domain other than the one now in the field.
+                setResult(null);
+              }}
               onKeyDown={(e) => { if (e.key === "Enter") void runCheck(); }}
             />
             <Button

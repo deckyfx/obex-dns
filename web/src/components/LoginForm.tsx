@@ -201,7 +201,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         />
       )}
 
-      {loginStep === 1 && authConfig?.signup_enabled !== false && (
+      {loginStep === 1 && authConfig?.signup_enabled === true && (
         <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 flex justify-center items-center text-sm">
           <button
             onClick={onToggleMode}
