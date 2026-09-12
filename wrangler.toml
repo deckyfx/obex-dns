@@ -13,6 +13,18 @@ command = "npm run build"
 [assets]
 directory = "./static"
 binding = "ASSETS"
+# Route the HTML document through the Worker. Without this, Cloudflare's asset
+# server answers "/" before the Worker runs, so applySecurityHeaders() never
+# executes for the page - it ships with no Content-Security-Policy, no
+# Strict-Transport-Security, no X-Content-Type-Options and no X-Frame-Options -
+# and the HTMLRewriter that injects window.OBEX_CONFIG never runs either, so
+# isDbMissing / isJwtSecretMissing are always undefined on "/".
+#
+# Scoped to the document rather than set to `true`, so the hashed asset files
+# keep being served directly by the asset server at no Worker invocation cost.
+# Deep links already reach the Worker: they match no asset and fall through to
+# the SPA handler.
+run_worker_first = ["/", "/index.html"]
 
 # D1 Database for Profiles, Rules and Logs
 [[d1_databases]]
