@@ -132,7 +132,12 @@ export const pipelineConfig = {
       }
 
       const config = { settings, rules };
-      if (bloom) bloomMemoryMap.set(profileId, { bloom, ts: Date.now() });
+      // Only stamp a filter that was actually just read. Re-stamping the one
+      // taken from memory would refresh BLOOM_MEM_TTL on every pass, so the
+      // ceiling would never expire and a warm isolate would serve its first
+      // bloom for its whole lifetime - never seeing a cron sync or a rebuild
+      // performed in another isolate.
+      if (bloom && !freshInMemBloom) bloomMemoryMap.set(profileId, { bloom, ts: Date.now() });
       
       configCache.set(profileId, { ...config, timestamp: Date.now() });
       // 写入 L2 Cache API 配置缓存 (配置变更时有主动淘汰)
