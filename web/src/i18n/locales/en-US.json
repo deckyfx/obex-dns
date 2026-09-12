@@ -501,7 +501,10 @@
     "echHelpBenefit1": "Prevents ISPs and eavesdroppers from inspecting the exact domain or subdomain you are visiting",
     "echHelpBenefit2": "Combines with DoH and ECH Fronting to eliminate plaintext SNI leakage and filtering",
     "retentionDisabled": "Disabled (Privacy Concerns)",
-    "retentionDisabledDesc": "Logging is disabled. The system will not record any DNS query logs and will immediately clear historical logs."
+    "retentionDisabledDesc": "Logging is disabled. The system will not record any DNS query logs and will immediately clear historical logs.",
+    "logBlockedOnly": "Log blocked queries only",
+    "logBlockedOnlyDesc": "Allowed queries are discarded before they are written. Keeps the record of what was blocked while removing the bulk of database writes.",
+    "logBlockedOnlyHint": "Analytics covering allowed traffic will be empty while this is on."
   },
   "account": {
     "title": "Account Settings",

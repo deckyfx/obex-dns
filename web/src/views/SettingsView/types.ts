@@ -11,6 +11,8 @@ export interface ProfileSettings {
     ipv6_cidr?: string;
   };
   log_retention_days: number;
+  /** When true, only BLOCK results are written to the log. */
+  log_blocked_only?: boolean;
   default_policy: "ALLOW" | "BLOCK";
   block_mode?: "NULL_IP" | "NXDOMAIN" | "NODATA" | "CUSTOM_IP";
   custom_block_ipv4?: string;

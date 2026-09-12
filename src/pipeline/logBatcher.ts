@@ -167,20 +167,30 @@ export function enqueueLog(
     return;
   }
 
-  // 2. Fast memory circuit-breaker check
+  // 2. Blocked-only policy: drop allowed results before they reach the queue.
+  // Blocked queries carry the diagnostic value - they are what gets inspected
+  // when a site breaks or when checking a list is working - while allowed
+  // queries are the overwhelming majority of the volume and are rarely read
+  // individually. On a household LAN this removes roughly four fifths of
+  // inserts. Off by default; existing profiles are unaffected.
+  if (settings?.log_blocked_only && log.action !== 'BLOCK') {
+    return;
+  }
+
+  // 3. Fast memory circuit-breaker check
   if (memoryCircuitBreakerUntil > Date.now()) {
     return;
   }
 
-  // 3. Ensure unique id is assigned before queueing
+  // 4. Ensure unique id is assigned before queueing
   if (!log.id) {
     log.id = generateLogId();
   }
 
-  // 4. Enqueue the log entry
+  // 5. Enqueue the log entry
   logBatchQueue.push(log);
 
-  // 5. Determine if an immediate flush is required or a deferred flush should be scheduled
+  // 6. Determine if an immediate flush is required or a deferred flush should be scheduled
   const now = Date.now();
   if (logBatchQueue.length >= MAX_BATCH_SIZE || now - lastFlushTime >= FLUSH_INTERVAL_MS) {
     ctx.waitUntil(flushLogBatch(env));

@@ -1,5 +1,5 @@
 import React from "react";
-import { Card, Elevation, H5, FormGroup, HTMLSelect } from "@blueprintjs/core";
+import { Card, Elevation, H5, FormGroup, HTMLSelect, Switch, Callout, Intent } from "@blueprintjs/core";
 import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type {  ProfileSettings  } from "../types";
@@ -49,6 +49,31 @@ export const LogRetentionCard: React.FC<LogRetentionCardProps> = ({ settings, se
             ? t("settings.retentionDisabledDesc", "已关闭日志记录。系统将不会记录任何 DNS 查询日志并立即清空历史日志。")
             : t("settings.retentionDesc")}
         </p>
+
+        <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
+          <Switch
+            large
+            checked={!!settings.log_blocked_only}
+            label={t("settings.logBlockedOnly", "Log blocked queries only")}
+            onChange={(e) =>
+              setSettings({ ...settings, log_blocked_only: (e.target as HTMLInputElement).checked })
+            }
+          />
+          <p className="text-xs opacity-60">
+            {t(
+              "settings.logBlockedOnlyDesc",
+              "Allowed queries are discarded before they are written. Keeps the record of what was blocked while removing the bulk of database writes."
+            )}
+          </p>
+          {settings.log_blocked_only && (
+            <Callout intent={Intent.PRIMARY} className="text-xs mt-2" icon="database">
+              {t(
+                "settings.logBlockedOnlyHint",
+                "Analytics covering allowed traffic will be empty while this is on."
+              )}
+            </Callout>
+          )}
+        </div>
       </div>
     </Card>
   );

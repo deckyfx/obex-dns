@@ -79,6 +79,12 @@ export interface ProfileSettings {
     ipv6_cidr?: string;
   };
   log_retention_days: number;
+  /**
+   * When true, only BLOCK results are logged and allowed queries are dropped
+   * before they reach the batcher. Cuts log writes to roughly a fifth on a
+   * typical LAN, at the cost of losing the allowed-traffic history.
+   */
+  log_blocked_only?: boolean;
   default_policy: 'ALLOW' | 'BLOCK';
   block_mode?: 'NULL_IP' | 'NXDOMAIN' | 'NODATA' | 'CUSTOM_IP';
   custom_block_ipv4?: string;
