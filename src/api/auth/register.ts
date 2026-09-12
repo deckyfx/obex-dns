@@ -7,7 +7,7 @@ import {
   getOrCreateJwtSecret,
   generateSessionHash
 } from "../../lib/auth";
-import { importJwtSecret, signJWT } from "../../lib/jwt";
+import { importJwtSecret, signJWT, isValidJwtSecret } from "../../lib/jwt";
 import { hashPassword } from "../../utils/crypto";
 import { UserModel } from "../../models/user";
 import { ActivityLogModel } from "../../models/activityLog";
@@ -25,6 +25,23 @@ export async function handleAuthRegisterRequest(request: Request, env: Env): Pro
   const cache = (caches as any).default;
   const clientIp = request.headers.get("CF-Connecting-IP") || "127.0.0.1";
   const userAgent = request.headers.get("User-Agent");
+
+  // Refuse to register before the signing key is known to be usable.
+  //
+  // index.ts returns for /api/auth/* BEFORE its JWT_SECRET configuration gate,
+  // so this handler is reachable on a misconfigured deployment. Registration
+  // would otherwise run to completion - creating the user row, and granting it
+  // the admin role when it is the first account - and only fail afterwards at
+  // getOrCreateJwtSecret(), leaving behind a usable account the operator never
+  // created and cannot see. Validate first so nothing is persisted.
+  if (!isValidJwtSecret(env.JWT_SECRET)) {
+    return new Response(JSON.stringify({
+      error: "configuration_error",
+      isDbMissing: false,
+      isJwtSecretMissing: true,
+      message: "DNS Worker is not fully configured. Please configure the JWT_SECRET secret variable."
+    }), { status: 503, headers: { "Content-Type": "application/json" } });
+  }
 
   if (request.headers.get("X-Password-Leaked") === "true" || request.headers.get("Exposed-Credential-Check") === "true") {
     return new Response("password_leaked", { status: 400 });
