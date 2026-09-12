@@ -25,7 +25,13 @@ export const pipelineConfig = {
     // Lowered from 5 minutes to 1. The cost is close to zero: a re-read is
     // served by the L2 Cache API entry, which has its own 1800s TTL, so it
     // rarely reaches D1.
-    const configMemTtl = Number(env.CONFIG_MEM_TTL) || 60000;
+    // A negative value would make the comparison below always false (no L1 hit),
+    // and Infinity would stop the entry ever expiring, so only accept a finite
+    // positive duration.
+    const configuredMemTtl = Number(env.CONFIG_MEM_TTL);
+    const configMemTtl = Number.isFinite(configuredMemTtl) && configuredMemTtl > 0
+      ? configuredMemTtl
+      : 60000;
     if (cachedConfig && (Date.now() - (cachedConfig.timestamp || 0) < configMemTtl)) {
       track('load_config_l1_mem');
       const validBloom = (inMem && Date.now() - inMem.ts < bloomMemTtl) ? inMem.bloom : undefined;

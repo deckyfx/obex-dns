@@ -88,7 +88,10 @@ export async function handleProfileListsRequest(
     const list = await listModel.getListById(listId, profileId);
     if (!list) return new Response("List Not Found", { status: 404 });
 
-    await listModel.setEnabled(listId, profileId, body.enabled);
+    const updated = await listModel.setEnabled(listId, profileId, body.enabled);
+    if (!updated) {
+      return new Response("Failed to update list", { status: 500 });
+    }
 
     // Rebuild the merged profile bloom from the lists still active. With no
     // pending lists, syncNextListForProfile runs combineAndPromote directly,
