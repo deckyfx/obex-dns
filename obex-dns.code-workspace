@@ -1,0 +1,191 @@
+{
+  "folders": [
+    {
+      "name": "obex-dns (worker)",
+      "path": "."
+    },
+    {
+      "name": "web (react ui)",
+      "path": "web"
+    }
+  ],
+  "settings": {
+    "js/ts.preferences.importModuleSpecifier": "relative",
+    "js/ts.updateImportsOnFileMove.enabled": "always",
+    "js/ts.experimental.useTsgo": true,
+    "js/ts.tsdk.path": "./node_modules/typescript",
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.oxc": "explicit"
+    },
+    "editor.tabSize": 2,
+    "editor.rulers": [
+      100
+    ],
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/build": true,
+      "**/static": true,
+      "**/.wrangler": true,
+      "**/package-lock.json": true,
+      "web/src/i18n/locales/**": true
+    },
+    "files.watcherExclude": {
+      "**/node_modules/**": true,
+      "**/.wrangler/**": true,
+      "**/dist/**": true,
+      "**/static/**": true
+    },
+    "files.associations": {
+      "wrangler.toml": "toml",
+      "*.sql": "sql"
+    },
+    "tailwindCSS.experimental.configFile": "web/tailwind.config.ts",
+    "tailwindCSS.includeLanguages": {
+      "typescript": "javascript",
+      "typescriptreact": "javascript"
+    },
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescriptreact]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[json]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[jsonc]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[sql]": {
+      "editor.formatOnSave": false
+    },
+    "git.branchProtection": [
+      "main"
+    ],
+    "oxc.enable": true,
+    "oxc.configPath": ".oxlintrc.json"
+  },
+  "extensions": {
+    "recommendations": [
+      "oxc.oxc-vscode",
+      "esbenp.prettier-vscode",
+      "bradlc.vscode-tailwindcss",
+      "cloudflare.vscode-cloudflare-workers",
+      "tamasfe.even-better-toml",
+      "mtxr.sqltools",
+      "eamodio.gitlens",
+      "streetsidesoftware.code-spell-checker"
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "dev (worker + ui)",
+        "type": "shell",
+        "command": "bun run dev",
+        "options": {
+          "cwd": "${workspaceFolder:obex-dns (worker)}"
+        },
+        "problemMatcher": [],
+        "isBackground": true,
+        "presentation": {
+          "panel": "dedicated"
+        }
+      },
+      {
+        "label": "build ui",
+        "type": "shell",
+        "command": "bun run build",
+        "options": {
+          "cwd": "${workspaceFolder:obex-dns (worker)}"
+        },
+        "problemMatcher": [
+          "$tsc"
+        ],
+        "group": "build"
+      },
+      {
+        "label": "typecheck (worker)",
+        "type": "shell",
+        "command": "bun run typecheck",
+        "options": {
+          "cwd": "${workspaceFolder:obex-dns (worker)}"
+        },
+        "problemMatcher": [
+          "$tsc"
+        ],
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        }
+      },
+      {
+        "label": "typecheck (web)",
+        "type": "shell",
+        "command": "bun run ui:typecheck",
+        "options": {
+          "cwd": "${workspaceFolder:obex-dns (worker)}"
+        },
+        "problemMatcher": [
+          "$tsc"
+        ]
+      },
+      {
+        "label": "lint (oxlint, whole repo)",
+        "type": "shell",
+        "command": "bun run lint",
+        "options": {
+          "cwd": "${workspaceFolder:obex-dns (worker)}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "lint --fix",
+        "type": "shell",
+        "command": "bun run lint:fix",
+        "options": {
+          "cwd": "${workspaceFolder:obex-dns (worker)}"
+        },
+        "problemMatcher": []
+      },
+      {
+        "label": "d1 migrate (local)",
+        "type": "shell",
+        "command": "bun run db:migrate:dev",
+        "options": {
+          "cwd": "${workspaceFolder:obex-dns (worker)}"
+        },
+        "problemMatcher": []
+      }
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Attach to wrangler dev",
+        "type": "node",
+        "request": "attach",
+        "port": 9229,
+        "cwd": "${workspaceFolder:obex-dns (worker)}",
+        "skipFiles": [
+          "<node_internals>/**"
+        ]
+      },
+      {
+        "name": "Open web UI (Chrome)",
+        "type": "chrome",
+        "request": "launch",
+        "url": "http://localhost:5173",
+        "webRoot": "${workspaceFolder:web (react ui)}/src"
+      }
+    ]
+  }
+}
