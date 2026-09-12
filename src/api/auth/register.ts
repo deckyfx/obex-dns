@@ -115,7 +115,11 @@ export async function handleAuthRegisterRequest(request: Request, env: Env): Pro
   const cf = (request as any).cf;
   const timezone = cf?.timezone || request.headers.get("CF-Timezone") || null;
   try {
-    const role = (await userModel.isEmpty()) ? 'admin' : 'user';
+    // isBootstrapSignup, not userModel.isEmpty(): the latter answers "empty" on
+    // a read error, which would hand admin to whoever happened to be signing up
+    // during a D1 failure. This matters even when SIGNUP_ENABLED is unset and
+    // the gate above is skipped entirely.
+    const role = (await isBootstrapSignup(env)) ? 'admin' : 'user';
     await userModel.create({ id: userId, username, passwordHash: hashedPassword, role, timezone, passwordVersion: 2 });
     const { latitude, longitude } = getRequestCoordinates(request);
     if (latitude === null || longitude === null) {

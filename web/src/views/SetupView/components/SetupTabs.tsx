@@ -291,6 +291,10 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
               {t("setup.mikrotikOrderWarning", "Order matters: the router needs working DNS to download the CA bundle, so plain DNS is set first and DoH is switched on last.")}
             </Callout>
 
+            <Callout intent={Intent.WARNING} icon="warning-sign" className="text-xs mt-2">
+              {t("setup.mikrotikNoFallbackWarning", "The last step clears the plain DNS servers so queries cannot leak to an unfiltered resolver. That also leaves DoH as the only way the router can resolve anything: if its clock is wrong after a power loss, certificate validation fails and there is no plain resolver left to reach an NTP server. Keep console access, or re-add a server temporarily while recovering.")}
+            </Callout>
+
             <div className="mt-4">
               <p className="text-sm font-bold mb-2">{t("setup.mikrotikStep1", "1. Trust public CAs (RouterOS ships with no CA store)")}</p>
               <CommandBlock text={MIKROTIK_CERT_CMD} copyToClipboard={copyToClipboard} />

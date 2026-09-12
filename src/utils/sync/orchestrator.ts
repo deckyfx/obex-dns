@@ -204,6 +204,9 @@ export async function rebuildProfileBloom(
   const profileBloomModel = new ProfileBloomModel(env.DB);
   const profileModel = new ProfileModel(env.DB);
 
+  const profile = await profileModel.getById(profileId);
+  const priorListUpdatedAt = profile?.list_updated_at ?? 0;
+
   await combineAndPromote(
     profileId,
     listModel,
@@ -215,4 +218,30 @@ export async function rebuildProfileBloom(
     Number(env.MAX_SYNC_DOMAINS) || 1000000,
     Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001
   );
+
+  // combineAndPromote ends by stamping list_updated_at as though a full sync
+  // cycle had run. Nothing was fetched here, so leaving that stamp would drop
+  // the profile out of getSyncTargets (list_updated_at <= now - 86400) for a
+  // day: a list enabled without a stored bloom would never be downloaded, and
+  // every other list's refresh would be postponed. Restore the prior value so
+  // the profile stays exactly as due for cron as it already was.
+  await profileModel.updateListUpdatedAt(profileId, priorListUpdatedAt);
+
+  // A list can be enabled while it has no bloom yet - added disabled in bulk,
+  // or its last sync errored. combineAndPromote skips it silently, so ask the
+  // orchestrator to fetch it; it picks the least-recently-synced pending list.
+  const activeLists = (await listModel.getLists(profileId)).filter((l) => !!l.enabled);
+  const bloomPresence = await Promise.all(
+    activeLists.map((l) =>
+      listBloomModel
+        .getListBloom(l.id)
+        .then((b) => !!b)
+        // Treat an unreadable bloom as present rather than triggering a
+        // download on a transient D1 error; cron will catch it on its next pass.
+        .catch(() => true)
+    )
+  );
+  if (bloomPresence.some((present) => !present)) {
+    await syncNextListForProfile(profileId, env, ctx);
+  }
 }

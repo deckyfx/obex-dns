@@ -209,9 +209,15 @@ export async function handleProfileListsRequest(
   if (request.method === 'DELETE') {
     const { id } = await request.json() as { id: number };
     await listModel.deleteList(id, profileId);
-    // 触发重构合并 (没有 pending 列表，syncNextListForProfile 会直接运行 combineAndPromote)
-    ctx.waitUntil(syncNextListForProfile(profileId, env, ctx));
-    ctx.waitUntil(pipeline.clearCache(profileId));
+    // Same reasoning as PATCH: removing a list changes which blooms are merged,
+    // not their contents. syncNextListForProfile would re-download a remaining
+    // list and, with 2+ still active, never reach combineAndPromote - so the
+    // deleted list's domains would keep blocking.
+    ctx.waitUntil(
+      rebuildProfileBloom(profileId, env, ctx)
+        .then(() => pipeline.clearCache(profileId))
+        .catch((e) => console.error(`[Lists] bloom rebuild after delete failed for ${profileId}:`, e))
+    );
     return new Response(null, { status: 204 });
   }
 
