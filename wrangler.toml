@@ -1,4 +1,4 @@
-name = "dns-worker"
+name = "obex-dns"
 main = "src/index.ts"
 compatibility_date = "2026-02-28"
 compatibility_flags = ["nodejs_compat"]
@@ -9,6 +9,13 @@ preview_urls = false
 
 [build]
 command = "npm run build"
+
+# Custom domain. Wrangler creates and manages the DNS record on deploy.
+# An explicit record for this hostname takes precedence over the zone's
+# existing *.decky.win wildcard, which is left untouched.
+[[routes]]
+pattern = "dns.decky.win"
+custom_domain = true
 
 [assets]
 directory = "./static"
@@ -31,7 +38,7 @@ run_worker_first = ["/", "/index.html"]
 binding = "DB"
 database_name = "dns_worker_db"
 # This field must be filled with your database ID; otherwise the deployment will fail.
-database_id = "13d8c24f-064a-40d6-8b10-fa70bb3f79ab"
+database_id = "57721cc5-8d85-43d5-9f53-318e5d5c511b"
 
 [triggers]
 crons = ["* * * * *"]
@@ -66,7 +73,7 @@ MAX_ACCESS_POINTS_PER_PROFILE = 100
 # Set to "false" to close public registration. Bootstrap is always permitted:
 # while no account exists the first signup still succeeds and becomes admin,
 # so a deployment can be brought up with this already false.
-SIGNUP_ENABLED = "true"
+SIGNUP_ENABLED = "false"
 # Maximum number of profiles allowed per user
 MAX_PROFILES_PER_USER = 10
 # Used to resolve DoH domains
