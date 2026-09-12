@@ -23,8 +23,10 @@ export const pipelineConfig = {
     // expires. That window is how long a settings change appears to do nothing.
     //
     // Lowered from 5 minutes to 1. The cost is close to zero: a re-read is
-    // served by the L2 Cache API entry, which has its own 1800s TTL, so it
-    // rarely reaches D1.
+    // usually served by the L2 Cache API entry rather than reaching D1.
+    // This TTL alone does not bound how long a settings change takes to apply:
+    // clearCache() only purges the colo that served the write, so the L2 TTL is
+    // the real cross-colo bound.
     // A negative value would make the comparison below always false (no L1 hit),
     // and Infinity would stop the entry ever expiring, so only accept a finite
     // positive duration.
@@ -115,7 +117,11 @@ export const pipelineConfig = {
       
       configCache.set(profileId, { ...config, timestamp: Date.now() });
       // 写入 L2 Cache API 配置缓存 (24 小时长效缓存，配置变更时有主动淘汰)
-      ctx.waitUntil(cacheUtils.set(cache, profileCacheKey, config, 86400));
+      // 300s, not a day: clearCache() is colo-local, so every colo that did not
+      // serve the settings write keeps answering from this entry until it
+      // expires. This TTL is what actually bounds cross-colo staleness. A miss
+      // costs a D1 read, the cheap side of this deployment's budget.
+      ctx.waitUntil(cacheUtils.set(cache, profileCacheKey, config, 300));
       
       track('load_config_full_sync');
       return { ...config, bloom };

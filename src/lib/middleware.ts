@@ -46,6 +46,16 @@ export function invalidateAuthUserCache(sessionId: string): void {
  * timestamp used for the idle-lock check, so second-level precision buys
  * nothing while costing a D1 write on every request.
  */
+/**
+ * How long after a failed last-active write the idle-lock decision is skipped.
+ * Isolate-local and best-effort: it only needs to cover the window in which a
+ * user would otherwise be locked out on a timestamp that D1 refused to update.
+ */
+const LIVENESS_DISTRUST_WINDOW_MS = 300_000;
+
+/** Timestamp of the most recent failed last-active write in this isolate. */
+let lastActivityWriteFailedAt = 0;
+
 const SESSION_ACTIVITY_THROTTLE_SEC = 60;
 
 export async function getCurrentUser(
@@ -92,7 +102,16 @@ export async function getCurrentUser(
       const userModel = new UserModel(env.DB, env);
       const dbUser = await userModel.getById(payload.userId);
 
-      if (dbUser && dbUser.pin_hash && !session.is_paused) {
+      // The idle check reads last_active_at, which the throttled write below
+      // keeps current. If that write is failing - the D1 rows_written quota
+      // being the realistic cause - the timestamp stops advancing even while
+      // the user is actively clicking, and this check would lock an in-use
+      // session. Treat a recent write failure as "liveness unknown" and skip
+      // the decision rather than pausing on evidence known to be stale.
+      const livenessUnreliable =
+        Date.now() - lastActivityWriteFailedAt < LIVENESS_DISTRUST_WINDOW_MS;
+
+      if (dbUser && dbUser.pin_hash && !session.is_paused && !livenessUnreliable) {
         const timeoutSeconds = (dbUser.session_lock_timeout || 15) * 60;
         if (now - lastActive > timeoutSeconds) {
           await sessionModel.pauseSession(session.id);
@@ -118,7 +137,10 @@ export async function getCurrentUser(
       if (now - lastActive > SESSION_ACTIVITY_THROTTLE_SEC) {
         const write = sessionModel
           .updateLastActive(session.id, now)
-          .catch((e) => console.error("[Auth] session last-active write failed:", e));
+          .catch((e) => {
+            lastActivityWriteFailedAt = Date.now();
+            console.error("[Auth] session last-active write failed:", e);
+          });
         if (ctx) {
           ctx.waitUntil(write);
         }

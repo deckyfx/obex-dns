@@ -1,4 +1,4 @@
 /**
  * 同步逻辑入口网关
  */
-export { syncNextListForProfile, syncAllListsForProfile } from "./sync/orchestrator";
+export { syncNextListForProfile, syncAllListsForProfile, rebuildProfileBloom } from "./sync/orchestrator";

@@ -178,3 +178,41 @@ export async function syncAllListsForProfile(
     await profileModel.updateListUpdatedAt(profileId, now);
   }
 }
+
+/**
+ * Rebuilds a profile's merged bloom from the per-list blooms already in D1.
+ *
+ * Use this when the set of *enabled* lists changes but no list content has:
+ * enabling, disabling or removing a list. Routing that through
+ * syncNextListForProfile does not work — it stamps syncSingleList and
+ * updateListUpdatedAt with the same `now`, so after any completed cycle every
+ * list satisfies `last_synced_at <= list_updated_at` and re-qualifies as
+ * pending. The call therefore takes the re-download branch, and with two or
+ * more remaining active lists `allDone` stays false, so the merged bloom is
+ * never rebuilt and list_updated_at is left behind cron's 24h window.
+ *
+ * combineAndPromote reads list_blooms directly and already skips disabled
+ * lists and handles the zero-active-lists case, so no network fetch is needed.
+ */
+export async function rebuildProfileBloom(
+  profileId: string,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<void> {
+  const listModel = new ListModel(env.DB);
+  const listBloomModel = new ListBloomModel(env.DB);
+  const profileBloomModel = new ProfileBloomModel(env.DB);
+  const profileModel = new ProfileModel(env.DB);
+
+  await combineAndPromote(
+    profileId,
+    listModel,
+    listBloomModel,
+    profileBloomModel,
+    profileModel,
+    ctx,
+    Math.floor(Date.now() / 1000),
+    Number(env.MAX_SYNC_DOMAINS) || 1000000,
+    Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001
+  );
+}

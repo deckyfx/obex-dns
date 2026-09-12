@@ -24,7 +24,7 @@ binding = "ASSETS"
 # server answers "/" before the Worker runs, so applySecurityHeaders() never
 # executes for the page - it ships with no Content-Security-Policy, no
 # Strict-Transport-Security, no X-Content-Type-Options and no X-Frame-Options -
-# and the HTMLRewriter that injects window.OBEX_CONFIG never runs either, so
+# and the HTMLRewriter that injects window.DNS_WORKER_CONFIG never runs either, so
 # isDbMissing / isJwtSecretMissing are always undefined on "/".
 #
 # Scoped to the document rather than set to `true`, so the hashed asset files

@@ -69,6 +69,10 @@ export interface ListCheckResult {
   matchedEntry?: string | null;
   /** False when the list has not finished syncing, so no filter exists yet. */
   synced: boolean;
+  /** Configured bloom false-positive rate, so the UI can qualify a match. */
+  falsePositiveRate?: number;
+  /** Whether the list is currently active. A disabled list still has a bloom. */
+  enabled?: boolean;
 }
 
 /**

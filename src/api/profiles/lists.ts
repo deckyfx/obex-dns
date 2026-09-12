@@ -1,7 +1,7 @@
 import { Env, User, ExecutionContext } from "../../types";
 import { ListModel } from "../../models/list";
 import { ProfileModel } from "../../models/profile";
-import { syncNextListForProfile, syncAllListsForProfile } from "../../utils/sync";
+import { syncNextListForProfile, syncAllListsForProfile, rebuildProfileBloom } from "../../utils/sync";
 import { isSafeUrl } from "../../utils/validator";
 import { pipeline } from "../../pipeline";
 import { ListBloomModel } from "../../models/listBloom";
@@ -66,6 +66,13 @@ export async function handleProfileListsRequest(
         // The entry that matched: equal to `domain` on an exact hit, or the
         // parent domain when the block comes from a wildcard higher up.
         matchedEntry: matched,
+        // A positive is a bloom hit, not proof of membership. The parent walk
+        // tests one suffix per label, so the effective false-positive rate is
+        // roughly the configured rate times the number of labels tested.
+        falsePositiveRate: Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001,
+        // A disabled list still has a stored bloom, so say so rather than
+        // implying the domain is currently being filtered.
+        enabled: !!list.enabled,
         synced: true
       }), { headers: { 'Content-Type': 'application/json' } });
     }
@@ -80,7 +87,12 @@ export async function handleProfileListsRequest(
       return new Response("Invalid list id", { status: 400 });
     }
 
-    const body = await request.json() as { enabled?: unknown };
+    let body: { enabled?: unknown };
+    try {
+      body = await request.json() as { enabled?: unknown };
+    } catch {
+      return new Response("Body must be { enabled: boolean }", { status: 400 });
+    }
     if (typeof body.enabled !== 'boolean') {
       return new Response("Body must be { enabled: boolean }", { status: 400 });
     }
@@ -93,11 +105,16 @@ export async function handleProfileListsRequest(
       return new Response("Failed to update list", { status: 500 });
     }
 
-    // Rebuild the merged profile bloom from the lists still active. With no
-    // pending lists, syncNextListForProfile runs combineAndPromote directly,
-    // which is what DELETE relies on too.
-    ctx.waitUntil(syncNextListForProfile(profileId, env, ctx));
-    ctx.waitUntil(pipeline.clearCache(profileId));
+    // Rebuild the merged profile bloom from the per-list blooms already stored.
+    // rebuildProfileBloom skips the incremental orchestrator deliberately: that
+    // path would re-download every remaining list, and with 2+ active lists it
+    // would not recombine at all. clearCache is chained so it cannot run before
+    // the new bloom is promoted.
+    ctx.waitUntil(
+      rebuildProfileBloom(profileId, env, ctx)
+        .then(() => pipeline.clearCache(profileId))
+        .catch((e) => console.error(`[Lists] bloom rebuild failed for ${profileId}:`, e))
+    );
 
     return new Response(JSON.stringify({ id: listId, enabled: body.enabled }), {
       headers: { 'Content-Type': 'application/json' }

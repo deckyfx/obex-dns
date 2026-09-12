@@ -63,7 +63,11 @@ export const SetupTabs: React.FC<SetupTabsProps> = ({
   const dohUrl = `${window.location.origin}/${profileKey}`;
   const pinnedIp = currentIps.find((entry) => entry.ip && !entry.ip.includes(":"))?.ip ?? "";
   const mikrotikStaticCmd = `/ip dns static add name=${dohHost} address=${pinnedIp || "<edge-ip-from-above>"} type=A`;
-  const mikrotikDohCmd = `/ip dns set use-doh-server="${dohUrl}" verify-doh-cert=yes\n/ip dns cache flush`;
+  // servers="" matters: RouterOS keeps the plain-DNS list as a fallback, so
+  // leaving 1.1.1.1 there would silently resolve every LAN query through an
+  // unfiltered resolver whenever DoH is unavailable. The static A record added
+  // in the previous step is what keeps the DoH hostname resolvable without it.
+  const mikrotikDohCmd = `/ip dns set servers="" use-doh-server="${dohUrl}" verify-doh-cert=yes\n/ip dns cache flush`;
 
   return (
     <Tabs

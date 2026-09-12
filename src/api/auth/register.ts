@@ -17,6 +17,24 @@ import { PASSWORD_REGEX, USERNAME_REGEX } from "../../utils/validator";
 import { verifyTurnstile } from "./utils";
 
 /**
+ * True only when the users table is provably empty.
+ *
+ * UserModel.isEmpty() answers `true` on a read error, which is a reasonable
+ * default for "should this account become admin" but exactly wrong for a
+ * security gate: a transient D1 failure would re-open public registration.
+ * This treats any error as "users exist", so the gate fails closed.
+ */
+async function isBootstrapSignup(env: Env): Promise<boolean> {
+  try {
+    const count = await env.DB.prepare("SELECT COUNT(*) as count FROM users").first<number>('count');
+    return (count ?? 1) === 0;
+  } catch (e) {
+    console.error("[Auth] signup gate: user count failed, denying registration:", e);
+    return false;
+  }
+}
+
+/**
  * Handle user registration requests (signup)
  */
 export async function handleAuthRegisterRequest(request: Request, env: Env): Promise<Response> {
@@ -58,12 +76,16 @@ export async function handleAuthRegisterRequest(request: Request, env: Env): Pro
   // is always allowed, so a deployment can ship with SIGNUP_ENABLED=false and
   // still create its administrator. That first account becomes admin, so the
   // exemption closes itself the moment it is used.
-  if (env.SIGNUP_ENABLED === 'false' && !(await userModel.isEmpty())) {
-    return new Response("registration_disabled", { status: 403 });
-  }
-
+  // The rate limiter is checked first on purpose: it is backed by the Cache API,
+  // so rejecting a flood costs no D1 reads. The gate below queries D1, and with
+  // SIGNUP_ENABLED=false the condition never short-circuits, so running it first
+  // would let an unauthenticated flood turn every request into a D1 query.
   if (await cacheUtils.isRateLimited(cache, `signup:${clientIp}`, 10, 60)) {
     return new Response("Too many attempts", { status: 429 });
+  }
+
+  if (env.SIGNUP_ENABLED === 'false' && !(await isBootstrapSignup(env))) {
+    return new Response("registration_disabled", { status: 403 });
   }
 
   const { username, password, turnstileToken } = await request.json() as any;
