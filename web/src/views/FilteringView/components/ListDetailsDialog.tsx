@@ -40,7 +40,11 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
 
   const reset = () => {
     // Invalidate any in-flight check so its response cannot land after this.
+    // Clearing `checking` here is required, not cosmetic: the settled promise's
+    // finally block is guarded by the token, so it will decline to clear it and
+    // the Check button would stay loading for the life of the component.
     checkToken.current++;
+    setChecking(false);
     setQuery("");
     setResult(null);
     setError(null);
@@ -252,7 +256,15 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
           icon={<Trash2 size={14} />}
           intent={Intent.DANGER}
           text={t("rules.delete", "Delete")}
-          onClick={() => { if (selectedList) onDelete(selectedList.id); }}
+          onClick={() => {
+            if (!selectedList) return;
+            // Deleting clears selectedList upstream, which closes the dialog by
+            // prop without ever running onClose - so reset here, or the next
+            // list opens showing the deleted list's verdict.
+            const id = selectedList.id;
+            reset();
+            onDelete(id);
+          }}
         />
         <Button onClick={() => { reset(); onClose(); }} text={t("rules.close", "Close")} />
       </div>
