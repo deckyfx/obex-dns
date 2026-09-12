@@ -9,3 +9,17 @@ package-lock.json
 .vscode
 data/
 *.sqlite*
+
+# local secrets for `wrangler dev` - never commit
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# local working notes, not for the public fork
+TODO.txt
+quota-watch.log
+quota-watch.sh
+
+# security review notes - kept locally, never published (public fork)
+docs/SECURITY_AUDIT_*.md
+docs/UPSTREAM_ADVISORY_*.md
