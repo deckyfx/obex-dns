@@ -6,6 +6,7 @@ import { ACCESS_KEY_REGEX } from './utils/validator';
 
 // Middleware imports
 import { applySecurityHeaders, getCurrentUser, validateCsrf } from './lib/middleware';
+import { isValidJwtSecret } from './lib/jwt';
 
 // Route handlers
 import { handleAuthRequest } from './api/auth';
@@ -45,7 +46,7 @@ export default {
         } catch (e) {
           isDbMissing = true;
         }
-        const isJwtSecretMissing = !env.JWT_SECRET;
+        const isJwtSecretMissing = !isValidJwtSecret(env.JWT_SECRET);
 
         if (isDbMissing || isJwtSecretMissing) {
           return new Response(JSON.stringify({
@@ -156,7 +157,7 @@ export default {
           } catch (e) {
             isDbMissing = true;
           }
-          const isJwtSecretMissing = !env.JWT_SECRET;
+          const isJwtSecretMissing = !isValidJwtSecret(env.JWT_SECRET);
 
           let configStr = "{}";
           try {

@@ -31,16 +31,64 @@ export function stringToUint8Array(str: string): Uint8Array {
   return new TextEncoder().encode(str);
 }
 
-export async function importJwtSecret(secretHex: string): Promise<CryptoKey> {
-  // If the secret is stored as hex, we decode it first
-  const secretBytes = new Uint8Array(secretHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-  return crypto.subtle.importKey(
+/**
+ * Minimum accepted length for JWT_SECRET. At 32 characters a hex secret carries
+ * 128 bits, and it rejects the 30-character placeholder used in the setup docs.
+ */
+export const MIN_JWT_SECRET_LENGTH = 32;
+
+/**
+ * Reports whether a JWT_SECRET is present and long enough to be usable.
+ * Used by the router so a misconfigured secret surfaces as a configuration
+ * error rather than a 500 from deep inside an auth handler.
+ */
+export function isValidJwtSecret(secret: string | undefined | null): boolean {
+  return typeof secret === "string" && secret.trim().length >= MIN_JWT_SECRET_LENGTH;
+}
+
+/** Memoised signing key. The secret is constant per isolate. */
+let cachedSecret: string | null = null;
+let cachedKey: CryptoKey | null = null;
+
+/**
+ * Derives the HMAC signing key from JWT_SECRET.
+ *
+ * The secret is hashed with SHA-256 rather than parsed as hex. Parsing it with
+ * `parseInt(pair, 16)` yields NaN for any non-hex pair, and NaN coerces to 0
+ * inside a Uint8Array, so a passphrase silently produced a key with far less
+ * entropy than the configured secret implied. Hashing accepts any secret format
+ * at full strength and matches importKek() in utils/envelope.ts.
+ *
+ * @throws If the secret is missing or shorter than MIN_JWT_SECRET_LENGTH.
+ */
+export async function importJwtSecret(secret: string): Promise<CryptoKey> {
+  const trimmed = (secret ?? "").trim();
+  if (!isValidJwtSecret(trimmed)) {
+    throw new Error(
+      `JWT_SECRET must be at least ${MIN_JWT_SECRET_LENGTH} characters. ` +
+      `Generate one with: openssl rand -hex 32`
+    );
+  }
+
+  if (cachedKey !== null && cachedSecret === trimmed) {
+    return cachedKey;
+  }
+
+  const material = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(trimmed)
+  );
+  const key = await crypto.subtle.importKey(
     "raw",
-    secretBytes,
+    material,
     { name: "HMAC", hash: "SHA-512" },
     false,
     ["sign", "verify"]
   );
+
+  cachedSecret = trimmed;
+  cachedKey = key;
+  return key;
 }
 
 export async function signJWT(payload: any, key: CryptoKey): Promise<string> {
