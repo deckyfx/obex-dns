@@ -47,6 +47,21 @@ export async function handleAuthRegisterRequest(request: Request, env: Env): Pro
     return new Response("password_leaked", { status: 400 });
   }
 
+  // Public registration gate.
+  //
+  // Registration was otherwise impossible to close: the only controls are a
+  // per-IP rate limit and an optional Turnstile CAPTCHA that is off by default,
+  // so anyone who found the hostname could create an account on someone else's
+  // resolver.
+  //
+  // Bootstrap is deliberately exempt - while no account exists the first signup
+  // is always allowed, so a deployment can ship with SIGNUP_ENABLED=false and
+  // still create its administrator. That first account becomes admin, so the
+  // exemption closes itself the moment it is used.
+  if (env.SIGNUP_ENABLED === 'false' && !(await userModel.isEmpty())) {
+    return new Response("registration_disabled", { status: 403 });
+  }
+
   if (await cacheUtils.isRateLimited(cache, `signup:${clientIp}`, 10, 60)) {
     return new Response("Too many attempts", { status: 429 });
   }

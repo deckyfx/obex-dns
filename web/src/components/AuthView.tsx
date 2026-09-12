@@ -18,6 +18,8 @@ export interface AuthConfig {
   turnstile_enabled_login: boolean;
   optional_session_expiration_days?: number;
   has_users?: boolean;
+  /** False when public registration is closed via SIGNUP_ENABLED. */
+  signup_enabled?: boolean;
 }
 
 /**

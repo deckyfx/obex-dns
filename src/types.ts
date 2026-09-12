@@ -22,6 +22,12 @@ export interface Env {
   THROTTLE_ACTIVE_SEC?: string | number;
   SYNC_PROFILE_INTERVAL_SEC?: string | number;
   TURNSTILE_SECRET_KEY?: string;
+  /**
+   * Set to "false" to close public registration. Bootstrap is always allowed:
+   * while no account exists the first signup still succeeds, otherwise a
+   * deployment configured this way could never create its administrator.
+   */
+  SIGNUP_ENABLED?: string;
   MAX_SYNC_DOMAINS?: string | number;
   MAX_LIST_DOMAINS?: string | number;
   MAX_LOG_RETENTION_DAYS?: string | number;

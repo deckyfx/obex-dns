@@ -24,7 +24,11 @@ export async function handleAuthConfigRequest(request: Request, env: Env): Promi
       turnstile_enabled_signup: signupEnabled === 'true',
       turnstile_enabled_login: loginEnabled === 'true',
       optional_session_expiration_days: Number(env.OPTIONAL_SESSION_EXPIRATION_DAYS) || 7,
-      has_users: hasUsers
+      has_users: hasUsers,
+      // False when public registration is closed. The UI hides the signup entry
+      // point; register.ts enforces it regardless. Always true while no account
+      // exists, so bootstrap stays reachable.
+      signup_enabled: env.SIGNUP_ENABLED !== 'false' || !hasUsers
     }), {
       headers: {
         'Content-Type': 'application/json',

@@ -63,6 +63,10 @@ head_sampling_rate = 0.01
 FAIL_OPEN_UPSTREAM = "https://freedns.controld.com/no-ads-malware-typo"
 # Maximum number of access points allowed per profile
 MAX_ACCESS_POINTS_PER_PROFILE = 100
+# Set to "false" to close public registration. Bootstrap is always permitted:
+# while no account exists the first signup still succeeds and becomes admin,
+# so a deployment can be brought up with this already false.
+SIGNUP_ENABLED = "true"
 # Maximum number of profiles allowed per user
 MAX_PROFILES_PER_USER = 10
 # Used to resolve DoH domains
