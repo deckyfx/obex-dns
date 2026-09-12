@@ -4,6 +4,8 @@ import { ProfileModel } from "../../models/profile";
 import { syncNextListForProfile, syncAllListsForProfile } from "../../utils/sync";
 import { isSafeUrl } from "../../utils/validator";
 import { pipeline } from "../../pipeline";
+import { ListBloomModel } from "../../models/listBloom";
+import { BloomFilter } from "../../utils/bloom";
 
 /**
  * Handle filter lists requests to /api/profiles/:id/lists
@@ -20,8 +22,83 @@ export async function handleProfileListsRequest(
   const profileModel = new ProfileModel(env.DB);
 
   if (request.method === 'GET') {
+    // GET /api/profiles/:id/lists/:listId/check?domain=example.com
+    //
+    // Answers "does this list block this domain" straight from the list's own
+    // bloom filter, walking parent domains exactly as pipeline/filter.ts does.
+    // External lists are stored only as bloom filters, so their entries cannot
+    // be enumerated or substring-searched - but membership is answerable in
+    // microseconds, which is the question the UI actually asks.
+    if (pathParts[5] === 'check') {
+      const listId = Number(pathParts[4]);
+      if (!Number.isInteger(listId) || listId <= 0) {
+        return new Response("Invalid list id", { status: 400 });
+      }
+
+      const domain = (new URL(request.url).searchParams.get('domain') || '').trim().toLowerCase();
+      if (!domain || domain.length > 253 || !/^[a-z0-9._-]+$/.test(domain)) {
+        return new Response("Invalid or missing domain parameter", { status: 400 });
+      }
+
+      const list = await listModel.getListById(listId, profileId);
+      if (!list) return new Response("List Not Found", { status: 404 });
+
+      const buffer = await new ListBloomModel(env.DB).getListBloom(listId);
+      if (!buffer) {
+        return new Response(JSON.stringify({ domain, blocked: false, synced: false }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const bloom = BloomFilter.fromUint8Array(new Uint8Array(buffer));
+      let candidate: string = domain;
+      let matched: string | null = null;
+      while (candidate) {
+        if (bloom.test(candidate)) { matched = candidate; break; }
+        const dot = candidate.indexOf('.');
+        if (dot === -1) break;
+        candidate = candidate.slice(dot + 1);
+      }
+
+      return new Response(JSON.stringify({
+        domain,
+        blocked: matched !== null,
+        // The entry that matched: equal to `domain` on an exact hit, or the
+        // parent domain when the block comes from a wildcard higher up.
+        matchedEntry: matched,
+        synced: true
+      }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
     const results = await listModel.getLists(profileId);
     return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  if (request.method === 'PATCH') {
+    const listId = Number(pathParts[4]);
+    if (!Number.isInteger(listId) || listId <= 0) {
+      return new Response("Invalid list id", { status: 400 });
+    }
+
+    const body = await request.json() as { enabled?: unknown };
+    if (typeof body.enabled !== 'boolean') {
+      return new Response("Body must be { enabled: boolean }", { status: 400 });
+    }
+
+    const list = await listModel.getListById(listId, profileId);
+    if (!list) return new Response("List Not Found", { status: 404 });
+
+    await listModel.setEnabled(listId, profileId, body.enabled);
+
+    // Rebuild the merged profile bloom from the lists still active. With no
+    // pending lists, syncNextListForProfile runs combineAndPromote directly,
+    // which is what DELETE relies on too.
+    ctx.waitUntil(syncNextListForProfile(profileId, env, ctx));
+    ctx.waitUntil(pipeline.clearCache(profileId));
+
+    return new Response(JSON.stringify({ id: listId, enabled: body.enabled }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
   if (request.method === 'POST') {
