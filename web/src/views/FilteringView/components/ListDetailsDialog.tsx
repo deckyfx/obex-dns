@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Dialog, Button, Intent, Callout, Switch, InputGroup, Tag } from "@blueprintjs/core";
 import { Copy, ExternalLink, Trash2, Search, ShieldOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -35,8 +35,12 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
   const [allowing, setAllowing] = useState(false);
   const [allowed, setAllowed] = useState(false);
   const [toggling, setToggling] = useState(false);
+  /** Monotonic id of the newest check, so stale responses can be discarded. */
+  const checkToken = useRef(0);
 
   const reset = () => {
+    // Invalidate any in-flight check so its response cannot land after this.
+    checkToken.current++;
     setQuery("");
     setResult(null);
     setError(null);
@@ -46,16 +50,24 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
   const runCheck = async () => {
     const domain = query.trim().toLowerCase();
     if (!domain || !selectedList) return;
+    // Tag this request. Closing the dialog mid-flight and reopening it on a
+    // different list would otherwise let the late response paint list A's
+    // verdict under list B's header.
+    const token = ++checkToken.current;
+    const listId = selectedList.id;
     setChecking(true);
     setError(null);
     setResult(null);
     setAllowed(false);
     try {
-      setResult(await checkDomainAgainstList(profileId, selectedList.id, domain));
+      const res = await checkDomainAgainstList(profileId, listId, domain);
+      if (checkToken.current === token) setResult(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (checkToken.current === token) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setChecking(false);
+      if (checkToken.current === token) setChecking(false);
     }
   };
 
@@ -158,6 +170,12 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
             </Callout>
           )}
 
+          {result?.synced && result.enabled === false && (
+            <Callout intent={Intent.NONE} className="text-xs">
+              {t("filtering.checkListDisabled", "This list is currently disabled, so it is not filtering anything right now.")}
+            </Callout>
+          )}
+
           {result?.synced && (
             <Callout
               intent={result.blocked ? Intent.WARNING : Intent.SUCCESS}
@@ -176,13 +194,14 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
                       </>
                     )}
                   </div>
-                  {result.enabled === false && (
-                    <div className="opacity-75">
-                      {t("filtering.checkListDisabled", "This list is currently disabled, so it is not filtering anything right now.")}
-                    </div>
-                  )}
                   <div className="opacity-75">
-                    {t("filtering.checkProbabilistic", "Filters are probabilistic, so a small share of matches are false positives. Adding an exception also covers every subdomain of it.")}
+                    {result.falsePositiveRate
+                      ? t("filtering.checkProbabilisticRate", {
+                          defaultValue:
+                            "Filters are probabilistic: roughly 1 match in {{odds}} is a false positive. Adding an exception also covers every subdomain of it.",
+                          odds: Math.round(1 / result.falsePositiveRate).toLocaleString(),
+                        })
+                      : t("filtering.checkProbabilistic", "Filters are probabilistic, so a small share of matches are false positives. Adding an exception also covers every subdomain of it.")}
                   </div>
                   {allowed ? (
                     <Tag intent={Intent.SUCCESS} minimal>

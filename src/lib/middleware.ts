@@ -46,17 +46,38 @@ export function invalidateAuthUserCache(sessionId: string): void {
  * timestamp used for the idle-lock check, so second-level precision buys
  * nothing while costing a D1 write on every request.
  */
-/**
- * How long after a failed last-active write the idle-lock decision is skipped.
- * Isolate-local and best-effort: it only needs to cover the window in which a
- * user would otherwise be locked out on a timestamp that D1 refused to update.
- */
-const LIVENESS_DISTRUST_WINDOW_MS = 300_000;
-
-/** Timestamp of the most recent failed last-active write in this isolate. */
-let lastActivityWriteFailedAt = 0;
-
 const SESSION_ACTIVITY_THROTTLE_SEC = 60;
+
+/**
+ * Activity this isolate has observed per session, as a unix timestamp.
+ *
+ * The idle-lock check reads session.last_active_at from D1. When the throttled
+ * write below fails - the rows_written quota being the realistic cause - that
+ * column stops advancing even while the user keeps clicking, and the check
+ * would lock a session that is in continuous use.
+ *
+ * This records the activity the write was meant to persist, so the check can
+ * take the later of the two. It is deliberately keyed by session: an earlier
+ * attempt used a single isolate-wide "writes are failing" flag, which let one
+ * user's transient failure suppress the idle lock for every other session in
+ * the isolate - a security control failing open on unrelated evidence.
+ *
+ * Isolate-local and lossy by design. A session with no entry falls back to the
+ * D1 value, so a genuinely idle session still locks.
+ */
+const observedActivity = new Map<string, number>();
+
+/** Cap on {@link observedActivity} so a long-lived isolate cannot grow it without bound. */
+const OBSERVED_ACTIVITY_MAX = 5000;
+
+function recordObservedActivity(sessionId: string, atSeconds: number): void {
+  if (observedActivity.size >= OBSERVED_ACTIVITY_MAX && !observedActivity.has(sessionId)) {
+    // Map preserves insertion order, so the first key is the oldest entry.
+    const oldest = observedActivity.keys().next();
+    if (!oldest.done) observedActivity.delete(oldest.value);
+  }
+  observedActivity.set(sessionId, atSeconds);
+}
 
 export async function getCurrentUser(
   request: Request,
@@ -102,18 +123,17 @@ export async function getCurrentUser(
       const userModel = new UserModel(env.DB, env);
       const dbUser = await userModel.getById(payload.userId);
 
-      // The idle check reads last_active_at, which the throttled write below
-      // keeps current. If that write is failing - the D1 rows_written quota
-      // being the realistic cause - the timestamp stops advancing even while
-      // the user is actively clicking, and this check would lock an in-use
-      // session. Treat a recent write failure as "liveness unknown" and skip
-      // the decision rather than pausing on evidence known to be stale.
-      const livenessUnreliable =
-        Date.now() - lastActivityWriteFailedAt < LIVENESS_DISTRUST_WINDOW_MS;
+      // Judge idleness on the later of D1's timestamp and the activity this
+      // isolate has actually seen, so a failing last-active write cannot lock a
+      // session that is in continuous use. Scoped to this session only.
+      const effectiveLastActive = Math.max(
+        lastActive,
+        observedActivity.get(payload.sessionId) ?? 0
+      );
 
-      if (dbUser && dbUser.pin_hash && !session.is_paused && !livenessUnreliable) {
+      if (dbUser && dbUser.pin_hash && !session.is_paused) {
         const timeoutSeconds = (dbUser.session_lock_timeout || 15) * 60;
-        if (now - lastActive > timeoutSeconds) {
+        if (now - effectiveLastActive > timeoutSeconds) {
           await sessionModel.pauseSession(session.id);
           session.is_paused = 1;
         }
@@ -135,12 +155,12 @@ export async function getCurrentUser(
       // Handed to waitUntil where available so it still completes after the
       // response is sent, rather than being cancelled with the request.
       if (now - lastActive > SESSION_ACTIVITY_THROTTLE_SEC) {
+        // Record it locally first: this is what keeps the idle check honest if
+        // the write below never lands.
+        recordObservedActivity(payload.sessionId, now);
         const write = sessionModel
           .updateLastActive(session.id, now)
-          .catch((e) => {
-            lastActivityWriteFailedAt = Date.now();
-            console.error("[Auth] session last-active write failed:", e);
-          });
+          .catch((e) => console.error("[Auth] session last-active write failed:", e));
         if (ctx) {
           ctx.waitUntil(write);
         }

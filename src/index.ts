@@ -8,6 +8,13 @@ import { ACCESS_KEY_REGEX } from './utils/validator';
 import { applySecurityHeaders, getCurrentUser, validateCsrf } from './lib/middleware';
 import { isValidJwtSecret, MIN_JWT_SECRET_LENGTH } from './lib/jwt';
 
+/**
+ * Whether this isolate has already reported a present-but-too-short JWT_SECRET.
+ * The condition is static for the isolate's lifetime, so logging it per request
+ * would bury the message in its own copies and burn the logs budget.
+ */
+let shortJwtSecretReported = false;
+
 // Route handlers
 import { handleAuthRequest } from './api/auth';
 import { handleProfilesRequest } from './api/profiles';
@@ -47,9 +54,10 @@ export default {
           isDbMissing = true;
         }
         const isJwtSecretMissing = !isValidJwtSecret(env.JWT_SECRET);
-        if (env.JWT_SECRET && isJwtSecretMissing) {
+        if (env.JWT_SECRET && isJwtSecretMissing && !shortJwtSecretReported) {
           // The router gate returns before importJwtSecret can raise its own
           // message, so without this the operator sees only a blank 503.
+          shortJwtSecretReported = true;
           console.error(`[Config] JWT_SECRET is set but shorter than ${MIN_JWT_SECRET_LENGTH} characters; refusing to serve API routes.`);
         }
 
@@ -163,7 +171,8 @@ export default {
             isDbMissing = true;
           }
           const isJwtSecretMissing = !isValidJwtSecret(env.JWT_SECRET);
-          if (env.JWT_SECRET && isJwtSecretMissing) {
+          if (env.JWT_SECRET && isJwtSecretMissing && !shortJwtSecretReported) {
+            shortJwtSecretReported = true;
             console.error(`[Config] JWT_SECRET is set but shorter than ${MIN_JWT_SECRET_LENGTH} characters.`);
           }
 
