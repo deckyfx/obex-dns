@@ -12,6 +12,8 @@ export interface Env {
   SESSION_GEO_DISTANCE_KM?: string | number;
   PREAUTH_TTL_SECONDS?: string | number;
   BLOOM_MEM_TTL?: string | number;
+  /** Per-isolate memory TTL for profile config, ms. Bounds how long a settings change takes to apply everywhere. */
+  CONFIG_MEM_TTL?: string | number;
   SYNC_TIMEOUT_MS?: string | number;
   INACTIVITY_THRESHOLD_DAYS?: string | number;
   PRESET_UPSTREAMS?: string;
