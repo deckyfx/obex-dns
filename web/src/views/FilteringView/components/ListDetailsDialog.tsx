@@ -176,6 +176,14 @@ export const ListDetailsDialog: React.FC<ListDetailsDialogProps> = ({
                       </>
                     )}
                   </div>
+                  {result.enabled === false && (
+                    <div className="opacity-75">
+                      {t("filtering.checkListDisabled", "This list is currently disabled, so it is not filtering anything right now.")}
+                    </div>
+                  )}
+                  <div className="opacity-75">
+                    {t("filtering.checkProbabilistic", "Filters are probabilistic, so a small share of matches are false positives. Adding an exception also covers every subdomain of it.")}
+                  </div>
                   {allowed ? (
                     <Tag intent={Intent.SUCCESS} minimal>
                       {t("filtering.checkAllowed", "Exception added - this domain now resolves")}

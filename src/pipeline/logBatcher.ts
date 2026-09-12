@@ -173,7 +173,10 @@ export function enqueueLog(
   // queries are the overwhelming majority of the volume and are rarely read
   // individually. On a household LAN this removes roughly four fifths of
   // inserts. Off by default; existing profiles are unaffected.
-  if (settings?.log_blocked_only && log.action !== 'BLOCK') {
+  // Drop only plain allows. REDIRECT is a policy decision the user authored and
+  // FAIL is the primary diagnostic signal (upstream timeouts, unsafe upstream,
+  // profile-not-found), so neither may be discarded here.
+  if (settings?.log_blocked_only && log.action === 'PASS') {
     return;
   }
 

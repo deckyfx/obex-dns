@@ -6,7 +6,7 @@ import { ACCESS_KEY_REGEX } from './utils/validator';
 
 // Middleware imports
 import { applySecurityHeaders, getCurrentUser, validateCsrf } from './lib/middleware';
-import { isValidJwtSecret } from './lib/jwt';
+import { isValidJwtSecret, MIN_JWT_SECRET_LENGTH } from './lib/jwt';
 
 // Route handlers
 import { handleAuthRequest } from './api/auth';
@@ -47,6 +47,11 @@ export default {
           isDbMissing = true;
         }
         const isJwtSecretMissing = !isValidJwtSecret(env.JWT_SECRET);
+        if (env.JWT_SECRET && isJwtSecretMissing) {
+          // The router gate returns before importJwtSecret can raise its own
+          // message, so without this the operator sees only a blank 503.
+          console.error(`[Config] JWT_SECRET is set but shorter than ${MIN_JWT_SECRET_LENGTH} characters; refusing to serve API routes.`);
+        }
 
         if (isDbMissing || isJwtSecretMissing) {
           return new Response(JSON.stringify({
@@ -158,6 +163,9 @@ export default {
             isDbMissing = true;
           }
           const isJwtSecretMissing = !isValidJwtSecret(env.JWT_SECRET);
+          if (env.JWT_SECRET && isJwtSecretMissing) {
+            console.error(`[Config] JWT_SECRET is set but shorter than ${MIN_JWT_SECRET_LENGTH} characters.`);
+          }
 
           let configStr = "{}";
           try {
