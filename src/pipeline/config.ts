@@ -15,7 +15,17 @@ export const pipelineConfig = {
     const cachedConfig = configCache.get(profileId);
     
     const bloomMemTtl = Number(env.BLOOM_MEM_TTL) || 600000;
-    const configMemTtl = 300000; // 5 minutes memory TTL for config
+    // Per-isolate memory TTL for profile config.
+    //
+    // pipeline.clearCache() deletes the L2 (Cache API) entry and the L1 entry of
+    // whichever isolate handled the request, but it cannot reach the memory of
+    // other isolates - they keep serving the old settings until their own entry
+    // expires. That window is how long a settings change appears to do nothing.
+    //
+    // Lowered from 5 minutes to 1. The cost is close to zero: a re-read is
+    // served by the L2 Cache API entry, which has its own 1800s TTL, so it
+    // rarely reaches D1.
+    const configMemTtl = Number(env.CONFIG_MEM_TTL) || 60000;
     if (cachedConfig && (Date.now() - (cachedConfig.timestamp || 0) < configMemTtl)) {
       track('load_config_l1_mem');
       const validBloom = (inMem && Date.now() - inMem.ts < bloomMemTtl) ? inMem.bloom : undefined;
