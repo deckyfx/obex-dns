@@ -7,7 +7,7 @@ import {
   getOrCreateJwtSecret,
   generateSessionHash
 } from "../../lib/auth";
-import { importJwtSecret, signJWT, isValidJwtSecret } from "../../lib/jwt";
+import { importJwtSecret, signJWT, isUsableJwtSecret } from "../../lib/jwt";
 import { hashPassword } from "../../utils/crypto";
 import { UserModel } from "../../models/user";
 import { ActivityLogModel } from "../../models/activityLog";
@@ -52,7 +52,10 @@ export async function handleAuthRegisterRequest(request: Request, env: Env): Pro
   // the admin role when it is the first account - and only fail afterwards at
   // getOrCreateJwtSecret(), leaving behind a usable account the operator never
   // created and cannot see. Validate first so nothing is persisted.
-  if (!isValidJwtSecret(env.JWT_SECRET)) {
+  //
+  // isUsableJwtSecret matches the index.ts gate: non-empty and not a documented
+  // placeholder. Shorter secrets are allowed, as upstream allows them.
+  if (!isUsableJwtSecret(env.JWT_SECRET)) {
     return new Response(JSON.stringify({
       error: "configuration_error",
       isDbMissing: false,
