@@ -15,7 +15,25 @@ export const pipelineConfig = {
     const cachedConfig = configCache.get(profileId);
     
     const bloomMemTtl = Number(env.BLOOM_MEM_TTL) || 600000;
-    const configMemTtl = 300000; // 5 minutes memory TTL for config
+    // Per-isolate memory TTL for profile config.
+    //
+    // pipeline.clearCache() deletes the L2 (Cache API) entry and the L1 entry of
+    // whichever isolate handled the request, but it cannot reach the memory of
+    // other isolates - they keep serving the old settings until their own entry
+    // expires. That window is how long a settings change appears to do nothing.
+    //
+    // Lowered from 5 minutes to 1. The cost is close to zero: a re-read is
+    // usually served by the L2 Cache API entry rather than reaching D1.
+    // This TTL alone does not bound how long a settings change takes to apply:
+    // clearCache() only purges the colo that served the write, so the L2 TTL is
+    // the real cross-colo bound.
+    // A negative value would make the comparison below always false (no L1 hit),
+    // and Infinity would stop the entry ever expiring, so only accept a finite
+    // positive duration.
+    const configuredMemTtl = Number(env.CONFIG_MEM_TTL);
+    const configMemTtl = Number.isFinite(configuredMemTtl) && configuredMemTtl > 0
+      ? configuredMemTtl
+      : 60000;
     if (cachedConfig && (Date.now() - (cachedConfig.timestamp || 0) < configMemTtl)) {
       track('load_config_l1_mem');
       const validBloom = (inMem && Date.now() - inMem.ts < bloomMemTtl) ? inMem.bloom : undefined;
@@ -60,6 +78,16 @@ export const pipelineConfig = {
       const bloomModel = new ProfileBloomModel(env.DB);
 
       // 并发从 D1 读取配置、规则及布隆过滤器，消除串行网络往返等待
+      //
+      // The bloom is read unconditionally, even when this isolate already holds
+      // a fresh copy in bloomMemoryMap. Skipping it looks like an easy saving -
+      // it is the largest read here, ~2.4MB over several rows - but this pass
+      // also republishes both L2 entries, and the L2 read branch above returns
+      // without a bloom, and without falling through to D1, whenever the config
+      // entry exists and bloom-bin does not. Publishing the config entry while
+      // leaving bloom-bin absent therefore makes every other isolate in the
+      // colo answer with no list filtering at all. Reading and republishing the
+      // two together is what keeps that state self-healing.
       const [profile, rules, buffer] = await Promise.all([
         profileModel.getById(profileId),
         ruleModel.getRules(profileId),
@@ -98,8 +126,12 @@ export const pipelineConfig = {
       if (bloom) bloomMemoryMap.set(profileId, { bloom, ts: Date.now() });
       
       configCache.set(profileId, { ...config, timestamp: Date.now() });
-      // 写入 L2 Cache API 配置缓存 (24 小时长效缓存，配置变更时有主动淘汰)
-      ctx.waitUntil(cacheUtils.set(cache, profileCacheKey, config, 86400));
+      // 写入 L2 Cache API 配置缓存 (配置变更时有主动淘汰)
+      // 300s, not a day: clearCache() is colo-local, so every colo that did not
+      // serve the settings write keeps answering from this entry until it
+      // expires. This TTL is what actually bounds cross-colo staleness. A miss
+      // costs a D1 read, the cheap side of this deployment's budget.
+      ctx.waitUntil(cacheUtils.set(cache, profileCacheKey, config, 300));
       
       track('load_config_full_sync');
       return { ...config, bloom };
