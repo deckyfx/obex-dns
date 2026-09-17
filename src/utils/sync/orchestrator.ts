@@ -178,3 +178,97 @@ export async function syncAllListsForProfile(
     await profileModel.updateListUpdatedAt(profileId, now);
   }
 }
+
+/**
+ * Rebuilds a profile's merged bloom from the per-list blooms already in D1.
+ *
+ * Use this when the set of *enabled* lists changes but no list content has:
+ * enabling, disabling or removing a list. Routing that through
+ * syncNextListForProfile does not work — it stamps syncSingleList and
+ * updateListUpdatedAt with the same `now`, so after any completed cycle every
+ * list satisfies `last_synced_at <= list_updated_at` and re-qualifies as
+ * pending. The call therefore takes the re-download branch, and with two or
+ * more remaining active lists `allDone` stays false, so the merged bloom is
+ * never rebuilt and list_updated_at is left behind cron's 24h window.
+ *
+ * combineAndPromote reads list_blooms directly and already skips disabled
+ * lists and handles the zero-active-lists case, so no network fetch is needed.
+ */
+export async function rebuildProfileBloom(
+  profileId: string,
+  env: Env,
+  ctx: ExecutionContext
+): Promise<void> {
+  const listModel = new ListModel(env.DB);
+  const listBloomModel = new ListBloomModel(env.DB);
+  const profileBloomModel = new ProfileBloomModel(env.DB);
+  const profileModel = new ProfileModel(env.DB);
+
+  const profile = await profileModel.getById(profileId);
+  const priorListUpdatedAt = profile?.list_updated_at ?? 0;
+
+  // A list can be enabled while it has no bloom yet - added disabled in bulk,
+  // or its last sync failed. combineAndPromote would skip it silently, so fetch
+  // it first. hasListBloom is an existence probe: getListBloom would
+  // concatenate every chunk of every list just to answer a boolean.
+  const activeLists = (await listModel.getLists(profileId)).filter((l) => !!l.enabled);
+  const presence = await Promise.all(
+    activeLists.map((l) =>
+      listBloomModel
+        .hasListBloom(l.id)
+        // Treat an unreadable row as present rather than downloading on a
+        // transient D1 error; cron will catch it on its next pass.
+        .catch(() => true)
+    )
+  );
+
+  // Sync the list that is actually missing, rather than delegating to
+  // syncNextListForProfile: a list whose sync errored carries a recent
+  // last_synced_at, so that picker would fetch a healthy list ahead of it.
+  // One per call keeps this bounded; cron handles any others.
+  const missingIndex = presence.findIndex((present) => !present);
+  if (missingIndex !== -1) {
+    const missing = activeLists[missingIndex];
+    try {
+      await syncSingleList(
+        profileId,
+        missing,
+        env,
+        listModel,
+        listBloomModel,
+        Math.floor(Date.now() / 1000)
+      );
+    } catch (e) {
+      console.error(`[Sync] fetch of list ${missing.id} during rebuild failed:`, e);
+    }
+  }
+
+  await combineAndPromote(
+    profileId,
+    listModel,
+    listBloomModel,
+    profileBloomModel,
+    profileModel,
+    ctx,
+    Math.floor(Date.now() / 1000),
+    Number(env.MAX_SYNC_DOMAINS) || 1000000,
+    Number(env.BLOOM_FALSE_POSITIVE_RATE) || 0.0001
+  );
+
+  // combineAndPromote ends by stamping list_updated_at as though a full sync
+  // cycle had run. This is not a cycle - at most one list was fetched - so
+  // leaving that stamp would drop the profile out of getSyncTargets
+  // (list_updated_at <= now - 86400) for a day, postponing every other list's
+  // refresh. Restore the prior value so the profile stays exactly as due as it
+  // already was. Report loudly if that fails: the visible symptom would be a
+  // profile that silently stops syncing for 24h.
+  try {
+    await profileModel.updateListUpdatedAt(profileId, priorListUpdatedAt);
+  } catch (e) {
+    console.error(
+      `[Sync] could not restore list_updated_at for ${profileId}; it is stamped as freshly synced and will be skipped by cron for one interval:`,
+      e
+    );
+  }
+}
+
