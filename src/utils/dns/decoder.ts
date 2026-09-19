@@ -174,6 +174,15 @@ export function parseDNSAnswer(
     const type = getQTypeName(typeCode);
     let data = "";
 
+    // Bounds check before decoding RDATA. A packet can declare an rdLength
+    // whose bytes are not actually present; indexing past the buffer yields
+    // undefined, which previously rendered as
+    // "undefined.undefined.undefined.undefined" for A records. Drop the
+    // record instead of emitting invented data.
+    if (offset + rdLength > raw.length) {
+      break;
+    }
+
     if (type === "A" && rdLength === 4) {
       data = `${raw[offset]}.${raw[offset + 1]}.${raw[offset + 2]}.${raw[offset + 3]}`;
     } else if (type === "AAAA" && rdLength === 16) {
