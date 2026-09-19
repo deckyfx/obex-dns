@@ -15,7 +15,21 @@ export const pipelineConfig = {
     const cachedConfig = configCache.get(profileId);
     
     const bloomMemTtl = Number(env.BLOOM_MEM_TTL) || 600000;
-    const configMemTtl = 300000; // 5 minutes memory TTL for config
+    // Per-isolate memory TTL for profile config.
+    //
+    // The tag purge clears the L2 (Cache API) entry in every colo, but it cannot
+    // reach the memory of other isolates - they keep serving the old settings
+    // until their own entry expires, so this TTL is what bounds that window.
+    // Lowered from 5 minutes to 1: a re-read is normally served by the L2 entry
+    // rather than reaching D1, so the cost is close to zero.
+    //
+    // A negative value would make the comparison below always false (no L1 hit)
+    // and Infinity would stop the entry ever expiring, so only accept a finite
+    // positive duration.
+    const configuredMemTtl = Number(env.CONFIG_MEM_TTL);
+    const configMemTtl = Number.isFinite(configuredMemTtl) && configuredMemTtl > 0
+      ? configuredMemTtl
+      : 60000;
     if (cachedConfig && (Date.now() - (cachedConfig.timestamp || 0) < configMemTtl)) {
       track('load_config_l1_mem');
       const validBloom = (inMem && Date.now() - inMem.ts < bloomMemTtl) ? inMem.bloom : undefined;
