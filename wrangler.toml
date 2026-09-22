@@ -75,8 +75,8 @@ head_sampling_rate = 0.001
 # When configured, profile config and bloom cache updates will be purged globally across all Cloudflare data centers by Cache-Tag.
 # CF_ZONE_ID can be configured here or in environment variables; CF_PURGE_TOKEN should be stored in Worker Secrets (e.g. `npx wrangler secret put CF_PURGE_TOKEN`).
 # Requires an API token with "Zone -> Cache Purge -> Purge" permission.
-# CF_ZONE_ID = ""
-# CF_PURGE_TOKEN = ""
+# CF_PURGE_TOKEN is set via `wrangler secret put` - not in this file.
+CF_ZONE_ID = "c9e3ac715e0ce9b01bf85fded5608b01"
 # Default upstream for fail-open emergency fallback
 FAIL_OPEN_UPSTREAM = "https://freedns.controld.com/no-ads-malware-typo"
 # Maximum number of access points allowed per profile
