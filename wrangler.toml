@@ -1,5 +1,5 @@
 # Cloudflare Worker project name.
-name = "dns-worker"
+name = "obex-dns"
 # TypeScript entry point for the Worker.
 main = "src/index.ts"
 # Runtime compatibility date used by Cloudflare Workers.
@@ -17,6 +17,13 @@ preview_urls = false
 # Build the project before deployment.
 command = "npm run build"
 
+# Custom domain. Wrangler creates and manages the DNS record on deploy.
+# An explicit record for this hostname takes precedence over the zone's
+# existing *.decky.win wildcard, which is left untouched.
+[[routes]]
+pattern = "dns.decky.win"
+custom_domain = true
+
 [assets]
 # Local directory containing static files.
 directory = "./static"
@@ -30,7 +37,7 @@ run_worker_first = ["/", "/index.html"]
 binding = "DB"
 database_name = "dns_worker_db"
 # This field must be filled with your database ID; otherwise the deployment will fail.
-database_id = "13d8c24f-064a-40d6-8b10-fa70bb3f79ab"
+database_id = "57721cc5-8d85-43d5-9f53-318e5d5c511b"
 
 [triggers]
 # Run scheduled maintenance tasks every minute.
@@ -68,8 +75,8 @@ head_sampling_rate = 0.001
 # When configured, profile config and bloom cache updates will be purged globally across all Cloudflare data centers by Cache-Tag.
 # CF_ZONE_ID can be configured here or in environment variables; CF_PURGE_TOKEN should be stored in Worker Secrets (e.g. `npx wrangler secret put CF_PURGE_TOKEN`).
 # Requires an API token with "Zone -> Cache Purge -> Purge" permission.
-# CF_ZONE_ID = ""
-# CF_PURGE_TOKEN = ""
+# CF_PURGE_TOKEN is set via `wrangler secret put` - not in this file.
+CF_ZONE_ID = "c9e3ac715e0ce9b01bf85fded5608b01"
 # Default upstream for fail-open emergency fallback
 FAIL_OPEN_UPSTREAM = "https://freedns.controld.com/no-ads-malware-typo"
 # Maximum number of access points allowed per profile
@@ -111,6 +118,11 @@ SESSION_GEO_DISTANCE_KM=50
 PREAUTH_TTL_SECONDS=300
 # In-memory retention time for profile bloom filters (in milliseconds)
 BLOOM_MEM_TTL=600000
+# Per-isolate memory retention for profile config (in milliseconds).
+# The Cache-Tag purge clears other colos' Cache API entries but not their
+# isolate memory, so this bounds how long a settings change can appear to do
+# nothing. Re-reads are absorbed by the Cache API layer, so lowering it is cheap.
+CONFIG_MEM_TTL=60000
 # Timeout threshold when downloading upstream blocklists (in milliseconds)
 SYNC_TIMEOUT_MS=30000
 # Number of days of inactivity before an account is cleared by cron jobs
