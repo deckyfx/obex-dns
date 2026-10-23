@@ -27,3 +27,6 @@ quota-watch.sh
 # security review notes - kept locally, never published (public fork)
 docs/SECURITY_AUDIT_*.md
 docs/UPSTREAM_ADVISORY_*.md
+
+# this fork uses Bun (bun.lock); keep npm lockfiles out
+package-lock.json
